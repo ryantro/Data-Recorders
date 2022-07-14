@@ -7,9 +7,18 @@ Created on Thu Jul 14 11:05:00 2022
 
 # IMPORTS
 import tkinter as tk
+from tkinter import ttk
 import threading
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+
+# FOR UNIT TESTING
+import random
+
+# POWER METER
+import power_meter
 
 class Application:
     def __init__(self, master):
@@ -26,7 +35,7 @@ class Application:
         
         # DEFINE RUNFRAME
         self.runframe = tk.Frame(self.master)
-        self.runframe.rowconfigure([0, 1], minsize=30, weight=1)
+        self.runframe.rowconfigure([0, 1, 2, 3], minsize=30, weight=1)
         self.runframe.columnconfigure([0, 1], minsize=25, weight=1)
 
         # ENTRY LABEL
@@ -38,11 +47,21 @@ class Application:
         self.entry.grid(row = 0, column = 1, sticky = "W", padx = (0,10), pady = 10)
         self.entry.insert(0, r'record-folder/test-data.py')
 
+        # LATEST MEASUREMENT LABEL
+        self.measurementLabel = tk.Label(self.runframe, text = "Power:", font = ('Ariel 15'))
+        self.measurementLabel.grid(row=1, column=0, sticky = "W", padx = 10)
+        
+        # LASEST MEASUREMENT
+        recentMeasurement = "{:.4f} mW".format(0)
+        self.var = tk.StringVar(self.runframe, value = recentMeasurement)
+        self.measurement = tk.Label(self.runframe, textvariable = self.var, font = ('Ariel 15'))
+        self.measurement.grid(row=1, column=1, sticky = "W", padx = (0,10))
+
         # GENERATE STATION ENABLE BOX
         self.stateframe = tk.Frame(self.runframe, borderwidth = 2,relief="groove")
         self.stateframe.columnconfigure([0, 1], minsize=50, weight=1)
         self.stateframe.rowconfigure([0], minsize=50, weight=1)
-        self.stateframe.grid(row = 1, column = 0, columnspan = 2, padx = 10, pady = (0,10), sticky = "EW")
+        self.stateframe.grid(row = 3, column = 0, columnspan = 2, padx = 10, pady = (0,10), sticky = "EW")
         
         # GENERATE ENABLE/DISABLE BUTTON
         self.stateButton = tk.Button(self.stateframe, text="START", command=self.stateToggle, font = ('Ariel 15'))
@@ -54,6 +73,26 @@ class Application:
 
         # VARIABLES
         self.recording = False
+        self.tList = []
+        self.pList = []
+        
+        # GENERATE PLOT
+        # bg = self.runframe.cget('background')
+        
+        fig = plt.figure()
+        fig.set_facecolor('#f0f0f0')
+ 
+        
+        self.powerPlot = fig.add_subplot(111)
+        self.powerPlot.set_title("Power")
+        self.powerPlot.set_ylabel("Power (mW)", fontsize = 14)
+        self.powerPlot.set_xlabel("Time (s)", fontsize = 14)
+        self.powerPlot.grid('On')
+        self.canvas = FigureCanvasTkAgg(fig, master = self.runframe)
+        self.canvas.get_tk_widget().grid(row=2, column=0, columnspan=2, ipadx=60, ipady=20, sticky = "EW", padx = 10, pady = (0,10))
+        self.canvas.draw()
+
+        plt.close(fig)
         
         # THREADS
         self.recordThread = threading.Thread(target = self.record)
@@ -113,10 +152,59 @@ class Application:
     def record(self):
         """ RECORD DATA FROM THE POWER METER """
         
-        # RECORD DATA WHILE RECORDING
-        while(self.recording):
-            print("time: {}".format(time.time()))
-            time.sleep(0.5)
+        try:
+            PM = power_meter.PowerMeter()
+        
+        
+            # CLEAR LISTS
+            self.tList = []
+            self.pList = []
+            
+            # CONFIGURE PLOT
+            self.powerPlot.cla()
+            self.powerPlot.set_title("Power")
+            self.powerPlot.set_ylabel("Power (mW)", fontsize = 14)
+            self.powerPlot.set_xlabel("Time (s)", fontsize = 14)
+            self.powerPlot.grid('On')
+            
+            # MARK START TIME
+            startTime = time.time()
+            
+            # RECORD DATA WHILE RECORDING
+            while(self.recording):
+                print("time: {}".format(time.time()))
+                
+                # UPDATE THE MOST RECENT VALUE
+                # recentVal = random.random()
+                recentVal = PM.getPower2()
+                print(recentVal)
+                self.var.set("{:.4f} mW".format(recentVal))
+                
+                # APPEND VALUES TO LISTS
+                self.tList.append(time.time())
+                self.pList.append(recentVal)
+                
+                # UPDATE THE PLOTS
+                # self.powerPlot.clear()
+                if(len(self.tList) > 1):
+                    self.powerPlot.plot([self.tList[-2] - startTime, self.tList[-1] - startTime], [self.pList[-2], self.pList[-1]], color = 'orange') #self.tList, self.pList)
+                
+                # self.powerPlot.set_data([],[])
+                
+                self.canvas.draw_idle()
+                
+                """
+                TODO
+                    Append data to a csv
+                
+                """
+                # SLEEP
+                time.sleep(1)
+        
+        finally:
+            
+            # CLOSE DEVICE
+            PM.close()
         
         return
     
@@ -131,18 +219,12 @@ class Application:
             
             # JOIN THE THREAD IF IT IS ALIVE
             if(self.recordThread.is_alive() == True):
-                self.recordThread.join(10)
+                self.recordThread.join(2)
             
             # DESTROY APPLICATION
             self.master.destroy()
             
         return
-
-
-
-
-
-
 
 
 def main():
@@ -157,7 +239,6 @@ def main():
     root.mainloop()
     
     return
-
 
 
 if __name__=="__main__":
