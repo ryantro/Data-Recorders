@@ -35,8 +35,8 @@ class Application:
         
         # DEFINE RUNFRAME
         self.runframe = tk.Frame(self.master)
-        self.runframe.rowconfigure([0, 1, 2, 3], minsize=30, weight=1)
-        self.runframe.columnconfigure([0, 1], minsize=25, weight=1)
+        self.runframe.rowconfigure([0, 1, 2], minsize=30, weight=1)
+        self.runframe.columnconfigure([0, 1, 2], minsize=25, weight=1)
 
         # ENTRY LABEL
         self.entryLabel = tk.Label(self.runframe,text="Save file:", font = ('Ariel 15'))
@@ -45,23 +45,19 @@ class Application:
         # ENTRY BOX
         self.entry = tk.Entry(self.runframe, text = 'Entry', width = 60, font = ('Ariel 15'))
         self.entry.grid(row = 0, column = 1, sticky = "W", padx = (0,10), pady = 10)
-        self.entry.insert(0, r'record-folder/test-data.py')
+        self.entry.insert(0, r'record-folder/test-data.csv')
 
-        # LATEST MEASUREMENT LABEL
-        self.measurementLabel = tk.Label(self.runframe, text = "Power:", font = ('Ariel 15'))
-        self.measurementLabel.grid(row=1, column=0, sticky = "W", padx = 10)
-        
-        # LASEST MEASUREMENT
-        recentMeasurement = "{:.4f} mW".format(0)
-        self.var = tk.StringVar(self.runframe, value = recentMeasurement)
-        self.measurement = tk.Label(self.runframe, textvariable = self.var, font = ('Ariel 15'))
-        self.measurement.grid(row=1, column=1, sticky = "W", padx = (0,10))
+        # CHECK BOX
+        self.saveVar = tk.BooleanVar()
+        self.saveVar.set(False)
+        self.saveBox = tk.Checkbutton(self.runframe, text='Save To CSV', variable = self.saveVar, onvalue = True, offvalue = False, font = ('Ariel 10'))
+        self.saveBox.grid(row = 0, column = 2, sticky = "E", padx = 10)
 
         # GENERATE STATION ENABLE BOX
         self.stateframe = tk.Frame(self.runframe, borderwidth = 2,relief="groove")
         self.stateframe.columnconfigure([0, 1], minsize=50, weight=1)
         self.stateframe.rowconfigure([0], minsize=50, weight=1)
-        self.stateframe.grid(row = 3, column = 0, columnspan = 2, padx = 10, pady = (0,10), sticky = "EW")
+        self.stateframe.grid(row = 2, column = 0, columnspan = 3, padx = 10, pady = (0,10), sticky = "EW")
         
         # GENERATE ENABLE/DISABLE BUTTON
         self.stateButton = tk.Button(self.stateframe, text="START", command=self.stateToggle, font = ('Ariel 15'))
@@ -76,22 +72,36 @@ class Application:
         self.tList = []
         self.pList = []
         
-        # GENERATE PLOT
-        # bg = self.runframe.cget('background')
+        # CREATE DATA FRAME
+        self.dataFrame = tk.Frame(self.runframe, borderwidth = 2,relief="groove")
+        self.dataFrame.rowconfigure([0, 1], minsize=30, weight=1)
+        self.dataFrame.columnconfigure([0], minsize=25, weight=1)
+        self.dataFrame.grid(row = 1, column = 0, columnspan = 3, padx = 10, pady = (0,10), sticky = "EW")
         
+        # LASEST MEASUREMENT
+        recentMeasurement = "Power: {:.4f} mW".format(0)
+        self.var = tk.StringVar(self.dataFrame, value = recentMeasurement)
+        self.measurement = tk.Label(self.dataFrame, textvariable = self.var, font = ('Ariel 15'))
+        self.measurement.grid(row=1, column=0, sticky = "E", padx = 10)
+        
+        
+        # GENERATE FIGURE       
         fig = plt.figure()
         fig.set_facecolor('#f0f0f0')
  
-        
+        # GENERATE PLOT
         self.powerPlot = fig.add_subplot(111)
         self.powerPlot.set_title("Power")
         self.powerPlot.set_ylabel("Power (mW)", fontsize = 14)
         self.powerPlot.set_xlabel("Time (s)", fontsize = 14)
         self.powerPlot.grid('On')
-        self.canvas = FigureCanvasTkAgg(fig, master = self.runframe)
-        self.canvas.get_tk_widget().grid(row=2, column=0, columnspan=2, ipadx=60, ipady=20, sticky = "EW", padx = 10, pady = (0,10))
+        
+        # GENERATE CANVAS
+        self.canvas = FigureCanvasTkAgg(fig, master = self.dataFrame)
+        self.canvas.get_tk_widget().grid(row=0, column=0, columnspan=2, ipadx=60, ipady=0, sticky = "EW")
         self.canvas.draw()
-
+        
+        # CLOSE FIGURE
         plt.close(fig)
         
         # THREADS
@@ -153,8 +163,8 @@ class Application:
         """ RECORD DATA FROM THE POWER METER """
         
         try:
+            # CONNECT TO POWER METER DEVICE
             PM = power_meter.PowerMeter()
-        
         
             # CLEAR LISTS
             self.tList = []
@@ -172,32 +182,28 @@ class Application:
             
             # RECORD DATA WHILE RECORDING
             while(self.recording):
-                print("time: {}".format(time.time()))
                 
                 # UPDATE THE MOST RECENT VALUE
-                # recentVal = random.random()
                 recentVal = PM.getPower2()
-                print(recentVal)
-                self.var.set("{:.4f} mW".format(recentVal))
+                self.var.set("Power: {:.4f} mW".format(recentVal))
                 
                 # APPEND VALUES TO LISTS
                 self.tList.append(time.time())
                 self.pList.append(recentVal)
                 
                 # UPDATE THE PLOTS
-                # self.powerPlot.clear()
                 if(len(self.tList) > 1):
                     self.powerPlot.plot([self.tList[-2] - startTime, self.tList[-1] - startTime], [self.pList[-2], self.pList[-1]], color = 'orange') #self.tList, self.pList)
                 
-                # self.powerPlot.set_data([],[])
-                
+                # UPDATE CANVAS
                 self.canvas.draw_idle()
                 
-                """
-                TODO
-                    Append data to a csv
-                
-                """
+                if(self.saveVar.get()):
+                    print("Saving")
+                    with open(self.entry.get(), 'a') as f:
+                        # WRITE VALUES TO FILES
+                        f.write("{}, {}\n".format(self.tList[-1], self.pList[-1]))
+                    
                 # SLEEP
                 time.sleep(1)
         
